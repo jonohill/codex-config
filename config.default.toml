@@ -1,0 +1,31 @@
+# Default provider/model configuration for configure-codex.py.
+#
+# This file ships as the default. Edit it in place, or copy it and pass
+# `--config <path>` to target a different OpenAI-compatible provider or model.
+#
+# Layering (highest priority first):
+#   CLI flag  >  environment variable  >  this config file
+
+[provider]
+# Identifier used as the Codex `model_provider` and provider table key.
+id = "ollama-cloud"
+# Human-readable name shown in config.toml and logs.
+name = "Ollama Cloud"
+# Environment variable that holds the API key.
+env_key = "OLLAMA_API_KEY"
+# OpenAI-compatible base URL (no trailing slash required).
+base_url = "https://ollama.com/v1"
+# Codex wire API to use ("responses" or "chat").
+wire_api = "responses"
+# Where users create/obtain an API key (shown in prompts/warnings).
+key_url = "https://ollama.com/settings/keys"
+# Instructions embedded in config.toml for the provider entry.
+env_key_instructions = "Create a key at https://ollama.com/settings/keys and export it as OLLAMA_API_KEY."
+
+[model]
+# Default model id to configure.
+id = "glm-5.2:cloud"
+# Context window in tokens.
+context_window = 1000000
+# Name of the model-catalog JSON written under CODEX_HOME.
+catalog_file = "ollama-cloud-models.json"
