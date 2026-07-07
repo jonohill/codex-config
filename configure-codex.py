@@ -294,32 +294,85 @@ def _parse_config_fallback(path: Path):
     return out
 
 
-def build_model_catalog(model: str, context_window: int, prompt: str):
+# Reasoning effort values recognised by Codex (see
+# codex-rs/protocol/src/openai_models.rs -> ReasoningEffort). Any other
+# non-empty string is accepted on the wire as a model-defined "custom" effort,
+# but only these have first-class UI treatment.
+KNOWN_REASONING_LEVELS = (
+    "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra",
+)
+
+# Default human descriptions shown next to each effort level in the Codex UI,
+# matching the wording used in the bundled codex-rs/models-manager/models.json.
+REASONING_DESCRIPTIONS = {
+    "none": "No reasoning",
+    "minimal": "Minimal reasoning for quick replies",
+    "low": "Fast responses with lighter reasoning",
+    "medium": "Balances speed and reasoning depth for everyday tasks",
+    "high": "Greater reasoning depth for complex problems",
+    "xhigh": "Extra high reasoning depth for complex problems",
+    "max": "Maximum reasoning depth for the hardest problems",
+    "ultra": "Ultra reasoning depth for the hardest problems",
+}
+
+
+def build_reasoning_presets(levels):
+    """Expand a list of effort strings into Codex ReasoningEffortPreset objects.
+
+    The catalog schema (codex-rs/protocol -> ReasoningEffortPreset) requires each
+    entry to be an object with `effort` and `description` fields, not a bare
+    string. Unknown levels are still emitted (Codex treats them as a
+    model-defined custom effort) but produce a generic description.
+    """
+    presets = []
+    for raw in levels or []:
+        level = str(raw).strip()
+        if not level:
+            continue
+        if level not in KNOWN_REASONING_LEVELS:
+            warn(f"reasoning level '{level}' is not a built-in Codex effort "
+                 f"(known: {', '.join(KNOWN_REASONING_LEVELS)}). Emitting it as "
+                 f"a model-defined custom effort.")
+        presets.append({
+            "effort": level,
+            "description": REASONING_DESCRIPTIONS.get(
+                level, f"{level} reasoning effort"),
+        })
+    return presets
+
+
+def build_model_catalog(model: str, context_window: int, prompt: str,
+                        reasoning_levels=None, default_reasoning_level=None,
+                        supports_reasoning_summaries=False):
     auto_compact = (context_window * 9) // 10
-    return {
-        "models": [
-            {
-                "slug": model,
-                "display_name": model,
-                "supported_reasoning_levels": [],
-                "shell_type": "default",
-                "visibility": "list",
-                "supported_in_api": True,
-                "priority": 0,
-                "base_instructions": prompt,
-                "supports_reasoning_summaries": False,
-                "support_verbosity": False,
-                "truncation_policy": {"mode": "tokens", "limit": 10000},
-                "supports_parallel_tool_calls": False,
-                "experimental_supported_tools": [],
-                "input_modalities": ["text"],
-                "context_window": context_window,
-                "max_context_window": context_window,
-                "auto_compact_token_limit": auto_compact,
-                "effective_context_window_percent": 95,
-            }
-        ]
+    presets = build_reasoning_presets(reasoning_levels)
+    # Default to the first advertised level when none is explicitly set so the
+    # model boots with thinking enabled rather than falling back to `medium`.
+    default_level = default_reasoning_level or (presets[0]["effort"]
+                                                if presets else None)
+    entry = {
+        "slug": model,
+        "display_name": model,
+        "supported_reasoning_levels": presets,
+        "shell_type": "default",
+        "visibility": "list",
+        "supported_in_api": True,
+        "priority": 0,
+        "base_instructions": prompt,
+        "supports_reasoning_summaries": supports_reasoning_summaries,
+        "support_verbosity": False,
+        "truncation_policy": {"mode": "tokens", "limit": 10000},
+        "supports_parallel_tool_calls": False,
+        "experimental_supported_tools": [],
+        "input_modalities": ["text"],
+        "context_window": context_window,
+        "max_context_window": context_window,
+        "auto_compact_token_limit": auto_compact,
+        "effective_context_window_percent": 95,
     }
+    if default_level is not None:
+        entry["default_reasoning_level"] = default_level
+    return {"models": [entry]}
 
 
 def write_text(path: Path, content: str, mode=0o600):
@@ -344,6 +397,9 @@ def main():
     env_key_instructions = provider.get("env_key_instructions", "")
     key_url = provider.get("key_url", "")
     catalog_file = model_cfg.get("catalog_file", f"{provider_id}-models.json")
+    reasoning_levels = model_cfg.get("reasoning_levels", [])
+    default_reasoning_level = model_cfg.get("default_reasoning_level")
+    supports_reasoning_summaries = model_cfg.get("supports_reasoning_summaries", False)
 
     def env(*names):
         for name in names:
@@ -425,7 +481,11 @@ def main():
 
     # 2. Write the model catalog (gives Codex the real context window and the
     #    injected base_instructions).
-    catalog = build_model_catalog(model, ctx, prompt)
+    catalog = build_model_catalog(
+        model, ctx, prompt,
+        reasoning_levels=reasoning_levels,
+        default_reasoning_level=default_reasoning_level,
+        supports_reasoning_summaries=supports_reasoning_summaries)
     catalog_path = codex_home / catalog_file
     write_text(catalog_path, json.dumps(catalog, indent=2) + "\n", mode=0o644)
     info(f"wrote model catalog -> {catalog_path}")

@@ -29,3 +29,14 @@ id = "glm-5.2:cloud"
 context_window = 1000000
 # Name of the model-catalog JSON written under CODEX_HOME.
 catalog_file = "ollama-cloud-models.json"
+# Reasoning/thinking effort levels the model accepts. An empty list disables
+# Codex's thinking selector for this model. Use only levels the backend honors;
+# built-in Codex efforts are "none", "minimal", "low", "medium", "high",
+# "xhigh", "max", "ultra" (any other non-empty string is sent as a
+# model-defined custom effort).
+reasoning_levels = ["high", "max"]
+# Effort applied when none is explicitly chosen at runtime. Defaults to the
+# first entry in reasoning_levels when unset; omit to let Codex fall back to medium.
+default_reasoning_level = "max"
+# Whether the model emits reasoning summaries (shown while Codex is thinking).
+supports_reasoning_summaries = true
